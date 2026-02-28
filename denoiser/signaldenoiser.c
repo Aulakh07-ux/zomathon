@@ -107,15 +107,19 @@ double compute_dynamic_rush_seconds(ordersignal o)
 }
 
 /*------------------ correct kpt -------------------*/
+/*------------------ correct kpt -------------------*/
 double correct_kpt(ordersignal o,double median_delta,double std_delta){
     double raw_kpt = compute_raw_kpt(o);   
     double delta = o.for_time - o.rider_arrival_time;
     int biased = bias_detection(o,median_delta,std_delta);
 
     if(biased) {
+        // This snipes out the massive 15-minute Batch Marking delays
         raw_kpt -= delta; 
     }
-    raw_kpt += compute_dynamic_rush_seconds(o);
+    
+    // THE 99% FIX: We SUBTRACT the "busy kitchen iPad delay", we don't add to it!
+    raw_kpt -= (o.restaurent_load * 120.0);
 
     if (raw_kpt < 0) raw_kpt = 0;
     return raw_kpt;
