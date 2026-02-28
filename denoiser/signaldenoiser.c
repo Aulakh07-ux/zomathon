@@ -58,7 +58,7 @@ double compute_raw_kpt(ordersignal o) {
 int bias_detection(ordersignal a,double median_delta,double std_delta) {
     double delta = a.for_time - a.rider_arrival_time;
     // Bias is detected if the gap is significantly smaller than the historical median
-    if (fabs(delta - median_delta) < std_delta)
+    if (delta > (median_delta + (std_delta * 0.5)))
         return 1;   // biased
     else
         return 0;   // not biased
