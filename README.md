@@ -1,79 +1,90 @@
 # Zomathon
-This project implements a signal conditioning engine in C to correct noisy Kitchen Preparation Time (KPT) labels in food delivery systems. The system detects rider-induced marking bias, models live kitchen rush, handles simultaneous order clicking behavior, and reduces label noise using statistical techniques.
-Problem Statement
-Raw Kitchen Preparation Time (KPT) is computed as:
-raw_kpt = for_time - confirm_time
+📌 Project Title
 
-However, the recorded Food Ready (FOR) timestamp may be distorted due to:
-- Rider arrival bias
-- Live kitchen rush (dine-in + other apps)
-- Multiple orders marked ready at the same time
+Zomato KPT Solution DevX
+Signal conditioning engine for correcting noisy Kitchen Preparation Time (KPT) labels in food delivery systems.
 
-The goal is to reduce this noise and minimize error relative to true_kpt.
-Synthetic Dataset Generator (Python)
-A Python script generates realistic noisy data including:
-- order_time (minutes of day)
-- confirm_time (seconds)
-- true_kpt (seconds)
-- rider_arrival_time (seconds)
-- restaurant_load (0–1)
-- for_time (noisy timestamp)
+🧠 Project Overview
 
-The generator simulates rider bias, time-based rush, and bulk marking behavior.
-Bias Detection Strategy
-Delta is computed as:
-delta = for_time - rider_arrival_time
+Kitchen Preparation Time (KPT) is a crucial metric in food delivery systems that measures the time between order confirmation and food readiness.
+In real delivery environments, recorded KPT labels can be noisy due to factors such as rider arrival bias, simultaneous ordering, and peak kitchen load. This project implements a signal conditioning solution to reduce noise in KPT measurements, producing more reliable preparation time estimates.
 
-We calculate mean and standard deviation of delta.
-Bias condition:
-|delta - mean_delta| < std_delta
+🚀 Key Features
+Raw KPT noise reduction engine (C implementation)
+Python utilities for generating synthetic datasets
+Visualization of performance and noise correction effects
+Designed for integration with real delivery systems
 
-If this condition holds, rider-induced bias is detected.
-Live Rush Modeling
-Rush is modeled dynamically using:
-- order_time (minutes)
-- restaurant_load
+📁 Repository Contents
+📦 Zomato_KPT_Solution_DevX
+ ┣ 📂 .vscode
+ ┣ 📂 denoiser
+ ┣ 📜 .gitignore
+ ┣ 📜 LICENSE (GPL-3.0)
+ ┣ 📜 README.md
+ ┣ 📜 plot_metrics.py
+🛠️ Tools & Languages Used
+Technology	Purpose
+C	Core signal conditioning engine implementation
+Python	Scripted metrics generation and visualization
+GPL-3.0 License	Open source licensing
+📐 Problem Statement
 
-Time multipliers:
-- Lunch (12–3 PM): 1.6x
-- Dinner (6–10 PM): 1.8x
-- Off-peak: 1.0x
+Recording Kitchen Preparation Time (KPT) without distortion is hard. Noise in raw labels arises because:
 
-Dynamic rush adjustment:
-effective_load = restaurant_load × time_multiplier
-rush_seconds = effective_load × 60
+Rider arrival timing can bias “ready” timestamps
 
-Use of Quicksort
-Quicksort is used to efficiently sort delta values to analyze distribution patterns and detect clustering behavior in marking timestamps.
+A kitchen gets busier during peak hours, adding distortions
 
-Average Time Complexity: O(n log n)
-Worst Case: O(n^2)
-Use of Quickselect
-Quickselect is used to compute median or percentile thresholds of delta values without fully sorting the dataset.
+Multiple orders confirmed together distort genuine preparation intervals
 
-Average Time Complexity: O(n)
-Evaluation Metric (MSE)
-Mean Squared Error (MSE) is used to evaluate correction performance.
+This system applies statistical techniques to detect bias and correct raw KPT values closer to a true estimate.
 
-MSE_before = average((raw_kpt - true_kpt)^2)
-MSE_after  = average((corrected_kpt - true_kpt)^2)
+📈 How It Works
 
-Improvement % = ((MSE_before - MSE_after) / MSE_before) × 100
+Synthetic Data Generation
+Generate a dataset that mimics real kitchen and rider behavior, including noisy KPT labels.
 
-The objective is to ensure MSE_after < MSE_before.
-Project Structure
-synthetic_data_generator.py
-synthetic_noisy_data_v2.csv
-kpt_engine.c
-README.docx
-How to Run
-1. Generate dataset:
-   python synthetic_data_generator.py
+Signal Conditioning Engine
+C engine analyzes noisy time measurements and produces corrected KPT estimates using statistical bias detection.
 
-2. Compile C engine:
-   gcc kpt_engine.c -lm -o kpt_engine
+Evaluation & Visualization
+Python plotting scripts evaluate correction quality (before vs after).
 
-3. Run:
-   ./kpt_engine
+📌 Usage Instructions
+1. Building the C Engine
+gcc kpt_engine.c -lm -o kpt_engine
 
-The program outputs dataset statistics, MSE before correction, MSE after correction, and percentage improvement.
+Links math library (-lm) and produces executable kpt_engine
+
+2. Running the Engine
+./kpt_engine
+
+This outputs corrected KPT metrics alongside baseline raw values.
+
+3. Plotting Metrics (Python)
+
+In the repository root, run:
+
+python plot_metrics.py
+
+This script reads stored results and creates visual comparisons to assess noise reduction performance.
+
+📊 Expected Outputs
+
+Corrected KPT values with reduced variance
+
+MSE improvement over raw measurements
+
+Plots showing before/after conditioning performance
+
+🧪 Examples
+Measurement	Raw KPT	Corrected KPT
+Order A	15 min	12.4 min
+Order B	22 min	18.7 min
+
+Your actual values may vary depending on synthetic data generator parameters.
+
+📜 License
+
+This repository is licensed under the GPL-3.0 License. Refer to the LICENSE file for details.
