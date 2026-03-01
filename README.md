@@ -1,6 +1,6 @@
 # Zomathon
 
-1. Project Overview
+**1. Project Overview**
 A high-performance C-based signal denoiser designed to correct noisy Kitchen Preparation Time (KPT) predictions under chaotic order conditions. The system simulates 10,000+ live orders and evaluates algorithmic latency and prediction accuracy improvement.
 
 **2. Problem Statement**
