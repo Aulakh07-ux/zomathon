@@ -16,7 +16,7 @@ Baseline MAE: 4.08 minutes per order
 
 **4. Performance Benchmark**
 Dataset Size: 10,000 orders
-Optimized Build (-O3): ~0.2–0.4 ms latency
+Optimized Build (-O3): ~0.6–0.8 ms latency
 Valgrind Instrumented Run: ~35–56 ms (instrumentation overhead)
 Baseline MAE: 4.08 minutes
 Hybrid MAE: 0.56 minutes
