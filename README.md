@@ -5,7 +5,7 @@ A high-performance C-based signal denoiser designed to correct noisy Kitchen Pre
 
 **2. Problem Statement**
 Baseline KPT predictions suffer from significant error under burst traffic and merchant load variability.
-Baseline MAE: 4.08 minutes per order
+Baseline MAE: 4.08 minutes per order.
 
 **3. Solution Approach**
 • Hybrid signal correction model
