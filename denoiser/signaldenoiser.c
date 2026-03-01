@@ -2,12 +2,12 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
+#include <time.h> 
 
 #define MAX_ORDERS 15000
 
 // ==========================================
-// 1. DATA STRUCTURE
+// 1. DATA STRUCTURE (Matches Python CSV 1:1)
 // ==========================================
 typedef struct {
     long order_id;
@@ -15,280 +15,185 @@ typedef struct {
     double confirm_time;
     double true_kpt;
     double rider_arrival_time;
-    double restaurent_load;
+    double restaurent_load;   // FEATURE: Kitchen Load
     double for_time;
-    double order_time;
+    double order_time;        // FEATURE: Time of Day
     double zomato_baseline;
-    double sensor_kpt;
+    double sensor_kpt;        // FEATURE: IoT Hardware
 } ordersignal;
 
 // ==========================================
-// 2. QUICKSELECT (Median in O(n))
+// 2. O(n) QUICKSELECT (Sub-millisecond Speed)
 // ==========================================
-void swap(double *a, double *b) {
-    double temp = *a;
-    *a = *b;
-    *b = temp;
+void swap(double *a, double *b) { 
+    double temp = *a; 
+    *a = *b; 
+    *b = temp; 
 }
 
 int partition(double arr[], int left, int right) {
-    double pivot = arr[right];
+    double pivot = arr[right]; 
     int i = left;
-
     for (int j = left; j <= right - 1; j++) {
-        if (arr[j] <= pivot) {
-            swap(&arr[i], &arr[j]);
-            i++;
+        if (arr[j] <= pivot) { 
+            swap(&arr[i], &arr[j]); 
+            i++; 
         }
     }
-
-    swap(&arr[i], &arr[right]);
+    swap(&arr[i], &arr[right]); 
     return i;
 }
 
 double quickselect(double arr[], int left, int right, int k) {
     if (k > 0 && k <= right - left + 1) {
         int index = partition(arr, left, right);
-
-        if (index - left == k - 1)
-            return arr[index];
-
-        if (index - left > k - 1)
-            return quickselect(arr, left, index - 1, k);
-
-        return quickselect(arr, index + 1, right,
-                           k - (index - left + 1));
+        if (index - left == k - 1) return arr[index];
+        if (index - left > k - 1) return quickselect(arr, left, index - 1, k);
+        return quickselect(arr, index + 1, right, k - (index - left + 1));
     }
-    return 0.0;
+    return 0;
 }
 
 // ==========================================
-// 3. DELTA STATS
+// 3. STATS & DYNAMIC KITCHEN RUSH PENALTY
 // ==========================================
-void delta_stats(ordersignal orders[], int count,
-                 double *median, double *std_dev) {
-
-    if (count == 0) {
-        *median = 0;
-        *std_dev = 0;
-        return;
-    }
-
+void delta_stats(ordersignal orders[], int count, double *median, double *std_dev) {
+    if (count == 0) return;
+    
     double *deltas = (double *)malloc(count * sizeof(double));
-
     for (int i = 0; i < count; i++) {
-        deltas[i] = orders[i].for_time -
-                    orders[i].rider_arrival_time;
+        deltas[i] = orders[i].for_time - orders[i].rider_arrival_time;
     }
-
-    *median = quickselect(deltas, 0, count - 1,
-                          (count / 2) + 1);
-
+    
+    *median = quickselect(deltas, 0, count - 1, (count / 2) + 1);
+    
     double var_sum = 0.0;
     for (int i = 0; i < count; i++) {
         var_sum += pow(deltas[i] - *median, 2);
     }
-
+    
     *std_dev = sqrt(var_sum / count);
-
     free(deltas);
 }
 
-// ==========================================
-// 4. RUSH MODEL
-// ==========================================
 double compute_time_multiplier(double order_time) {
     int minutes = (int)order_time;
-
-    if (minutes >= 720 && minutes <= 900)       // 12–3 PM
-        return 1.6;
-
-    if (minutes >= 1080 && minutes <= 1320)     // 6–10 PM
-        return 1.8;
-
+    // Lunch Peak (12 PM - 3 PM)
+    if (minutes >= 720 && minutes <= 900) {
+        return 1.6; 
+    }
+    // Dinner Peak (6 PM - 10 PM)
+    if (minutes >= 1080 && minutes <= 1320) {
+        return 1.8; 
+    }
     return 1.0;
 }
 
 double compute_dynamic_rush_seconds(ordersignal o) {
-    double multiplier =
-        compute_time_multiplier(o.order_time);
-
-    double effective_load =
-        o.restaurent_load * multiplier;
-
-    return effective_load * 40.0;
+    double time_multiplier = compute_time_multiplier(o.order_time);
+    double effective_load = o.restaurent_load * time_multiplier;
+    return effective_load * 40.0; // Subtracts 40 seconds per overlapping order
 }
 
 // ==========================================
-// 5. PREDICTION ENGINE
+// 4. THE 3-TIERED HYBRID DENOISING LOGIC
 // ==========================================
-double compute_raw_kpt(ordersignal o) {
-    // IoT sensor preferred, fallback to baseline
-    if (o.sensor_kpt > 0)
-        return o.sensor_kpt;
-
-    return o.zomato_baseline;
-}
-
-int bias_detection(ordersignal o,
-                   double median_delta,
-                   double std_delta) {
-
-    double delta =
-        o.for_time - o.rider_arrival_time;
-
-    if (delta > (median_delta +
-                (std_delta * 0.5)))
-        return 1;
-
-    return 0;
-}
-
-double correct_kpt(ordersignal o,
-                   double median_delta,
-                   double std_delta) {
-
-    double raw_kpt =
-        compute_raw_kpt(o);
-
-    double delta =
-        o.for_time - o.rider_arrival_time;
-
-    int is_biased =
-        bias_detection(o,
-                       median_delta,
-                       std_delta);
-
-    // Case 1: Batch marking bias
-    if (is_biased) {
-        raw_kpt -= delta;
+double compute_final_prediction(ordersignal o, double median_delta, double std_delta) {
+    // TIER 1: HARDWARE IOT SENSOR
+    // If the sensor didn't drop a packet (-1.0), it is the absolute ground truth.
+    if (o.sensor_kpt != -1.0) {
+        return o.sensor_kpt; 
     }
-
-    // Case 2: Kitchen congestion
-    if (!is_biased &&
-        o.restaurent_load > 6) {
-
-        raw_kpt -=
-            compute_dynamic_rush_seconds(o);
+    
+    // TIER 2: SOFTWARE DENOISING (No hardware available or network failed)
+    double raw_kpt = o.for_time - o.confirm_time;
+    double delta = o.for_time - o.rider_arrival_time;
+    int is_biased = 0;
+    
+    // FILTER A: Catch "Batch Marking" (Massive gap between prep and rider)
+    if (delta > (median_delta + (std_delta * 0.5))) {
+        raw_kpt -= delta; 
+        is_biased = 1;
     }
-
-    // Safety fallback
-    if (raw_kpt <= 0)
+    
+    // FILTER B: Catch "Kitchen Congestion" (Managers delaying iPad clicks)
+    if (is_biased == 0 && o.restaurent_load > 6) {
+        raw_kpt -= compute_dynamic_rush_seconds(o);
+    }
+    
+    // TIER 3: HISTORICAL FALLBACK
+    // If the math results in a negative ETA, fallback to Zomato's baseline average
+    if (raw_kpt <= 0) {
         return o.zomato_baseline;
-
-    return raw_kpt;
-}
-
-double compute_final_prediction(ordersignal o,
-                                double median_delta,
-                                double std_delta) {
-
-    return correct_kpt(o,
-                       median_delta,
-                       std_delta);
+    } else {
+        return raw_kpt;
+    }
 }
 
 // ==========================================
-// 6. MAIN
+// 5. MAIN EXECUTION (CSV Reader & Latency Timer)
 // ==========================================
 int main() {
-
-    FILE *file =
-        fopen("realistic_chaos_data.csv", "r");
-
+    FILE *file = fopen("realistic_chaos_data.csv", "r");
     if (!file) {
-        printf("ERROR: CSV not found.\n");
+        printf("ERROR: Could not find CSV. Run the Python script first!\n");
         return 1;
     }
 
-    ordersignal *orders =
-        (ordersignal *)malloc(
-            MAX_ORDERS *
-            sizeof(ordersignal));
-
-    char line[512];
+    ordersignal *orders = (ordersignal *)malloc(MAX_ORDERS * sizeof(ordersignal));
+    char line[512]; 
     int count = 0;
-
-    fgets(line, sizeof(line), file);
-
-    while (fgets(line, sizeof(line), file)
-           && count < MAX_ORDERS) {
-
-        sscanf(line,
-        "%ld,%d,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf",
-        &orders[count].order_id,
-        &orders[count].merchant_id,
-        &orders[count].confirm_time,
-        &orders[count].true_kpt,
-        &orders[count].rider_arrival_time,
-        &orders[count].restaurent_load,
-        &orders[count].for_time,
-        &orders[count].order_time,
-        &orders[count].zomato_baseline,
-        &orders[count].sensor_kpt);
-
+    
+    if (fgets(line, sizeof(line), file) == NULL) {
+    fprintf(stderr, "Error reading header line\n");
+    fclose(file);
+    free(orders);
+    return 1;
+    }
+    // Scan exactly 10 columns
+    while (fgets(line, sizeof(line), file) != NULL && count < MAX_ORDERS) {
+        sscanf(line, "%ld,%d,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf",
+               &orders[count].order_id, &orders[count].merchant_id,
+               &orders[count].confirm_time, &orders[count].true_kpt,
+               &orders[count].rider_arrival_time, &orders[count].restaurent_load,
+               &orders[count].for_time, &orders[count].order_time,
+               &orders[count].zomato_baseline, &orders[count].sensor_kpt);
         count++;
     }
-
     fclose(file);
 
-    clock_t start_time = clock();
-
+    // --- START LATENCY BENCHMARK ---
+    clock_t start_time = clock(); 
+    
     double median_delta, std_delta;
+    delta_stats(orders, count, &median_delta, &std_delta);
 
-    delta_stats(orders, count,
-                &median_delta,
-                &std_delta);
-
-    double mae_baseline = 0.0;
-    double mae_optimized = 0.0;
+    double mae_baseline = 0.0, mae_optimized = 0.0;
 
     for (int i = 0; i < count; i++) {
-
-        double optimized_pred =
-            compute_final_prediction(
-                orders[i],
-                median_delta,
-                std_delta);
-
-        mae_baseline += fabs(
-            orders[i].zomato_baseline -
-            orders[i].true_kpt);
-
-        mae_optimized += fabs(
-            optimized_pred -
-            orders[i].true_kpt);
+        double optimized_pred = compute_final_prediction(orders[i], median_delta, std_delta);
+        
+        // Calculate Mean Absolute Error (MAE) for both models
+        mae_baseline += fabs(orders[i].zomato_baseline - orders[i].true_kpt);
+        mae_optimized += fabs(optimized_pred - orders[i].true_kpt);
     }
 
-    clock_t end_time = clock();
+    // --- STOP LATENCY BENCHMARK ---
+    clock_t end_time = clock(); 
+    double latency = ((double)(end_time - start_time) / CLOCKS_PER_SEC) * 1000.0;
 
-    double latency =
-        ((double)(end_time - start_time)
-         / CLOCKS_PER_SEC) * 1000.0;
+    mae_baseline = (mae_baseline / count) / 60.0; // Convert to minutes
+    mae_optimized = (mae_optimized / count) / 60.0; // Convert to minutes
 
-    mae_baseline =
-        (mae_baseline / count) / 60.0;
+    printf("\n=== ZOMATHON SYSTEM TEST RESULTS ===\n");
+    printf("Processed %d chaotic orders.\n", count);
+    printf("Algorithmic Latency: %.3f ms\n", latency);
+    printf("------------------------------------\n");
+    printf("Baseline Zomato Error (MAE) : %.2f minutes off per order\n", mae_baseline);
+    printf("Hybrid System Error (MAE)   : %.2f minutes off per order\n", mae_optimized);
+    printf("Improvement                 : %.2f%%\n", ((mae_baseline - mae_optimized)/mae_baseline) * 100);
+    printf("====================================\n\n");
 
-    mae_optimized =
-        (mae_optimized / count) / 60.0;
-
-    printf("\n=== ZOMATHON SYSTEM TEST ===\n");
-    printf("Processed %d orders\n", count);
-    printf("Latency: %.3f ms\n", latency);
-    printf("Baseline MAE : %.2f minutes\n",
-           mae_baseline);
-    printf("Optimized MAE: %.2f minutes\n",
-           mae_optimized);
-
-    if (mae_baseline > 0) {
-        printf("Improvement  : %.2f%%\n",
-        ((mae_baseline -
-          mae_optimized)
-         / mae_baseline) * 100);
-    }
-
-    printf("===========================\n");
-
-    free(orders);
+    free(orders); 
     return 0;
 }
